@@ -54,7 +54,7 @@ If you use this tool in your research or work, please consider citing it as:
 @software{PPT-Table-Tool,
   author = {Anton Sychev},
   title = {{PPT-Table-Tool}},
-  url = {https://github.com/klich3/PPT-table-tool},
+  url = {https://github.com/Nabeel-Farooq/PPT-table-tool},
   version = {1.0.0},
   license = {MIT},
 }
