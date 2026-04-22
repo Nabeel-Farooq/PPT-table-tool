@@ -1,9 +1,5 @@
 # PPT-Table-Tool
 
-![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)
-![Issues](https://img.shields.io/github/issues/klich3/PPT-table-tool.svg)
-![Pull Requests](https://img.shields.io/github/issues-pr/klich3/PPT-table-tool.svg)
-
 PPT-Table-Tool is a utility to generate PowerPoint (PPT) presentations with tables from plain text or Domain Specific Language (DSL) files. It provides an easy-to-use interface and supports Windows registry dumps in various formats.
 
 ## Features
@@ -49,8 +45,8 @@ Contributions are welcome! Create pull requests.
 If you use this tool in your research or work, please consider citing it as:
 
 - **Title:** PPT-Table-Tool
-- **Authors:** Anton Sychev
-- **Repository:** [GitHub](https://github.com/klich3/PPT-table-tool)
+- **Authors:** Nabeel Farooq
+- **Repository:** [GitHub](https://github.com/Nabeel-Farooq/PPT-table-tool)
 - **Version:** 1.0.0
 - **License:** MIT
 
@@ -69,6 +65,4 @@ If you use this tool in your research or work, please consider citing it as:
 
 This project is licensed under the [MIT License](LICENSE).
 
-## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=klich3/PPT-table-tool&type=Date)](https://star-history.com/#klich3/PPT-table-tool&Date)
