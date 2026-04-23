@@ -8,11 +8,11 @@ message: >-
   metadata from this file.
 type: software
 authors:
-  - email: anton@sychev.xyz
-    given-names: Anton
-    family-names: Sychev
+  - email: nabeelfarooq1515@gmail.com
+    given-names: Nabeel
+    family-names: Farooq
     affiliation: too
-repository-code: "https://github.com/klich3/PPT-table-tool"
+repository-code: "https://github.com/Nabeel-Farooq/PPT-table-tool"
 abstract: >-
   This is a tool for creating PPT Power Play Tables for Ati Radeon Graphic cards.
 keywords:
