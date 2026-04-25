@@ -12,7 +12,7 @@ ON_POSIX = 'posix' in sys.builtin_module_names
 class Run:
 
     def __init__(self):
-        return
+        return 
 
     def _read_output(self, pipe, q):
         try:
