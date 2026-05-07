@@ -1,233 +1,529 @@
-import sys, os, time, re, json, datetime, ctypes, subprocess
+import ctypes
+import datetime
+import json
+import os
+import select
+import subprocess
+import sys
+import time
 
-if os.name == "nt":
-    # Windows
+from pathlib import Path
+from typing import Any, Optional, Tuple
+
+
+IS_WINDOWS = os.name == "nt"
+
+if IS_WINDOWS:
     import msvcrt
-else:
-    # Not Windows \o/
-    import select
+
 
 class Utils:
+    """
+    General utility helper class.
+    """
 
-    def __init__(self, name = "Python Script"):
+    def __init__(
+        self,
+        name: str = "Python Script",
+    ):
         self.name = name
-        # Init our colors before we need to print anything
-        cwd = os.getcwd()
-        os.chdir(os.path.dirname(os.path.realpath(__file__)))
-        if os.path.exists("colors.json"):
-            self.colors_dict = json.load(open("colors.json"))
-        else:
-            self.colors_dict = {}
-        os.chdir(cwd)
 
-    def check_admin(self):
-        # Returns whether or not we're admin
+        self.colors_dict = self._load_colors()
+
+    # ==================================================
+    # INTERNAL HELPERS
+    # ==================================================
+
+    def _load_colors(self) -> dict:
+        """
+        Load colors.json if it exists.
+        """
+
+        colors_path = (
+            Path(__file__).resolve().parent
+            / "colors.json"
+        )
+
+        if not colors_path.exists():
+            return {}
+
         try:
-            is_admin = os.getuid() == 0
-        except AttributeError:
-            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-        return is_admin
+            with colors_path.open(
+                encoding="utf-8"
+            ) as file:
+                return json.load(file)
 
-    def elevate(self, file):
-        # Runs the passed file as admin
+        except Exception:
+            return {}
+
+    # ==================================================
+    # ADMIN / PRIVILEGES
+    # ==================================================
+
+    def check_admin(self) -> bool:
+        """
+        Check whether the current process
+        is running with administrator privileges.
+        """
+
+        try:
+            return os.getuid() == 0
+
+        except AttributeError:
+            return (
+                ctypes.windll.shell32
+                .IsUserAnAdmin() != 0
+            )
+
+    def elevate(
+        self,
+        file_path: str,
+    ) -> None:
+        """
+        Relaunch script with administrator privileges.
+        """
+
         if self.check_admin():
             return
-        if os.name == "nt":
-            ctypes.windll.shell32.ShellExecuteW(None, "runas", '"{}"'.format(sys.executable), '"{}"'.format(file), None, 1)
-        else:
-            try:
-                p = subprocess.Popen(["which", "sudo"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                c = p.communicate()[0].decode("utf-8", "ignore").replace("\n", "")
-                os.execv(c, [ sys.executable, 'python'] + sys.argv)
-            except:
-                exit(1)
-                
-    def compare_versions(self, vers1, vers2, **kwargs):
-        # Helper method to compare ##.## strings
-        #
-        # vers1 < vers2 = True
-        # vers1 = vers2 = None
-        # vers1 > vers2 = False
-        
-        # Sanitize the pads
-        pad = str(kwargs.get("pad", ""))
-        sep = str(kwargs.get("separator", "."))
 
-        ignore_case = kwargs.get("ignore_case", True)
-        
-        # Cast as strings
-        vers1 = str(vers1)
-        vers2 = str(vers2)
-        
+        if IS_WINDOWS:
+
+            ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "runas",
+                sys.executable,
+                f'"{file_path}"',
+                None,
+                1,
+            )
+
+            return
+
+        try:
+            process = subprocess.Popen(
+                ["which", "sudo"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            stdout, _ = process.communicate()
+
+            sudo_path = stdout.decode(
+                "utf-8",
+                "ignore",
+            ).strip()
+
+            os.execv(
+                sudo_path,
+                [
+                    "sudo",
+                    sys.executable,
+                    *sys.argv,
+                ],
+            )
+
+        except Exception:
+            sys.exit(1)
+
+    # ==================================================
+    # VERSION HELPERS
+    # ==================================================
+
+    def compare_versions(
+        self,
+        version1: str,
+        version2: str,
+        *,
+        separator: str = ".",
+        pad: str = "0",
+        ignore_case: bool = True,
+    ) -> Optional[bool]:
+        """
+        Compare two version strings.
+
+        Returns:
+            True:
+                version1 < version2
+
+            False:
+                version1 > version2
+
+            None:
+                versions are equal
+        """
+
+        version1 = str(version1)
+        version2 = str(version2)
+
         if ignore_case:
-            vers1 = vers1.lower()
-            vers2 = vers2.lower()
+            version1 = version1.lower()
+            version2 = version2.lower()
 
-        # Split and pad lists
-        v1_parts, v2_parts = self.pad_length(vers1.split(sep), vers2.split(sep))
-        
-        # Iterate and compare
-        for i in range(len(v1_parts)):
-            # Remove non-numeric
-            v1 = ''.join(c.lower() for c in v1_parts[i] if c.isalnum())
-            v2 = ''.join(c.lower() for c in v2_parts[i] if c.isalnum())
-            # Equalize the lengths
-            v1, v2 = self.pad_length(v1, v2)
-            # Compare
-            if str(v1) < str(v2):
+        parts1, parts2 = self.pad_length(
+            version1.split(separator),
+            version2.split(separator),
+            pad=pad,
+        )
+
+        for part1, part2 in zip(parts1, parts2):
+
+            clean1 = "".join(
+                char for char in part1
+                if char.isalnum()
+            )
+
+            clean2 = "".join(
+                char for char in part2
+                if char.isalnum()
+            )
+
+            clean1, clean2 = self.pad_length(
+                clean1,
+                clean2,
+                pad=pad,
+            )
+
+            if clean1 < clean2:
                 return True
-            elif str(v1) > str(v2):
+
+            if clean1 > clean2:
                 return False
-        # Never differed - return None, must be equal
+
         return None
 
-    def pad_length(self, var1, var2, pad = "0"):
-        # Pads the vars on the left side to make them equal length
-        pad = "0" if len(str(pad)) < 1 else str(pad)[0]
-        if not type(var1) == type(var2):
-            # Type mismatch! Just return what we got
-            return (var1, var2)
-        if len(var1) < len(var2):
-            if type(var1) is list:
-                var1.extend([str(pad) for x in range(len(var2) - len(var1))])
+    def pad_length(
+        self,
+        value1: Any,
+        value2: Any,
+        *,
+        pad: str = "0",
+    ) -> Tuple[Any, Any]:
+        """
+        Pad two values to equal length.
+        """
+
+        pad = str(pad)[0]
+
+        if type(value1) is not type(value2):
+            return value1, value2
+
+        length_difference = len(value1) - len(value2)
+
+        if length_difference < 0:
+
+            missing = abs(length_difference)
+
+            if isinstance(value1, list):
+                value1.extend([pad] * missing)
+
             else:
-                var1 = "{}{}".format((pad*(len(var2)-len(var1))), var1)
-        elif len(var2) < len(var1):
-            if type(var2) is list:
-                var2.extend([str(pad) for x in range(len(var1) - len(var2))])
+                value1 = (
+                    pad * missing
+                ) + value1
+
+        elif length_difference > 0:
+
+            if isinstance(value2, list):
+                value2.extend(
+                    [pad] * length_difference
+                )
+
             else:
-                var2 = "{}{}".format((pad*(len(var1)-len(var2))), var2)
-        return (var1, var2)
-        
-    def check_path(self, path):
-        # Let's loop until we either get a working path, or no changes
-        test_path = path
-        last_path = None
-        while True:
-            # Bail if we've looped at least once and the path didn't change
-            if last_path != None and last_path == test_path: return None
-            last_path = test_path
-            # Check if we stripped everything out
-            if not len(test_path): return None
-            # Check if we have a valid path
+                value2 = (
+                    pad * length_difference
+                ) + value2
+
+        return value1, value2
+
+    # ==================================================
+    # PATH HELPERS
+    # ==================================================
+
+    def check_path(
+        self,
+        path: str,
+    ) -> Optional[str]:
+        """
+        Attempt to sanitize and validate a path.
+        """
+
+        test_path = path.strip()
+
+        while test_path:
+
             if os.path.exists(test_path):
                 return os.path.abspath(test_path)
-            # Check for quotes
-            if test_path[0] == test_path[-1] and test_path[0] in ('"',"'"):
+
+            # Remove surrounding quotes
+            if (
+                len(test_path) >= 2
+                and test_path[0] == test_path[-1]
+                and test_path[0] in ('"', "'")
+            ):
                 test_path = test_path[1:-1]
                 continue
-            # Check for a tilde and expand if needed
-            if test_path[0] == "~":
-                tilde_expanded = os.path.expanduser(test_path)
-                if tilde_expanded != test_path:
-                    # Got a change
-                    test_path = tilde_expanded
-                    continue
-            # Let's check for spaces - strip from the left first, then the right
-            if test_path[0] in (" ","\t"):
-                test_path = test_path[1:]
-                continue
-            if test_path[-1] in (" ","\t"):
-                test_path = test_path[:-1]
-                continue
-            # Maybe we have escapes to handle?
-            test_path = "\\".join([x.replace("\\", "") for x in test_path.split("\\\\")])
 
-    def grab(self, prompt, **kwargs):
-        # Takes a prompt, a default, and a timeout and shows it with that timeout
-        # returning the result
-        timeout = kwargs.get("timeout", 0)
-        default = kwargs.get("default", None)
-        # If we don't have a timeout - then skip the timed sections
+            # Expand user path
+            expanded = os.path.expanduser(
+                test_path
+            )
+
+            if expanded != test_path:
+                test_path = expanded
+                continue
+
+            # Handle escaped slashes
+            fixed = "\\".join(
+                part.replace("\\", "")
+                for part in test_path.split("\\\\")
+            )
+
+            if fixed == test_path:
+                break
+
+            test_path = fixed
+
+        return None
+
+    # ==================================================
+    # INPUT HELPERS
+    # ==================================================
+
+    def grab(
+        self,
+        prompt: str,
+        *,
+        timeout: int = 0,
+        default: Any = None,
+    ) -> Any:
+        """
+        Prompt user for input with optional timeout.
+        """
+
         if timeout <= 0:
-            if sys.version_info >= (3, 0):
-                return input(prompt)
-            else:
-                return str(raw_input(prompt))
-        # Write our prompt
+            return input(prompt)
+
         sys.stdout.write(prompt)
         sys.stdout.flush()
-        if os.name == "nt":
+
+        user_input = ""
+
+        if IS_WINDOWS:
+
             start_time = time.time()
-            i = ''
+
             while True:
+
                 if msvcrt.kbhit():
-                    c = msvcrt.getche()
-                    if ord(c) == 13: # enter_key
+
+                    char = msvcrt.getche()
+
+                    if ord(char) == 13:
                         break
-                    elif ord(c) >= 32: #space_char
-                        i += c
-                if len(i) == 0 and (time.time() - start_time) > timeout:
+
+                    if ord(char) >= 32:
+                        user_input += char.decode(
+                            errors="ignore"
+                        )
+
+                if (
+                    not user_input
+                    and (
+                        time.time() - start_time
+                    ) > timeout
+                ):
                     break
-        else:
-            i, o, e = select.select( [sys.stdin], [], [], timeout )
-            if i:
-                i = sys.stdin.readline().strip()
-        print('')  # needed to move to next line
-        if len(i) > 0:
-            return i
-        else:
-            return default
 
-    def cls(self):
-    	os.system('cls' if os.name=='nt' else 'clear')
+        else:
 
-    def cprint(self, message, **kwargs):
-        strip_colors = kwargs.get("strip_colors", False)
-        if os.name == "nt":
+            readable, _, _ = select.select(
+                [sys.stdin],
+                [],
+                [],
+                timeout,
+            )
+
+            if readable:
+                user_input = (
+                    sys.stdin.readline()
+                    .strip()
+                )
+
+        print()
+
+        return (
+            user_input
+            if user_input
+            else default
+        )
+
+    # ==================================================
+    # TERMINAL HELPERS
+    # ==================================================
+
+    @staticmethod
+    def cls() -> None:
+        """
+        Clear terminal screen.
+        """
+
+        os.system(
+            "cls"
+            if IS_WINDOWS
+            else "clear"
+        )
+
+    def cprint(
+        self,
+        message: str,
+        *,
+        strip_colors: bool = False,
+    ) -> Optional[str]:
+        """
+        Print colored terminal text.
+        """
+
+        if IS_WINDOWS:
             strip_colors = True
-        reset = u"\u001b[0m"
-        # Requires sys import
-        for c in self.colors:
+
+        reset = "\u001b[0m"
+
+        colors = getattr(
+            self,
+            "colors",
+            [],
+        )
+
+        for color in colors:
+
             if strip_colors:
-                message = message.replace(c["find"], "")
+                message = message.replace(
+                    color["find"],
+                    "",
+                )
+
             else:
-                message = message.replace(c["find"], c["replace"])
+                message = message.replace(
+                    color["find"],
+                    color["replace"],
+                )
+
         if strip_colors:
             return message
+
         sys.stdout.write(message)
         print(reset)
 
-    # Header drawing method
-    def head(self, text = None, width = 55):
-        if text == None:
-            text = self.name
+        return None
+
+    def head(
+        self,
+        text: Optional[str] = None,
+        width: int = 55,
+    ) -> None:
+        """
+        Draw terminal header.
+        """
+
         self.cls()
-        print(format("-"*width))
-        mid_len = int(round(width/2-len(text)/2)-2)
-        middle = "|{}{}{}|".format(" "*mid_len, text, " "*((width - mid_len - len(text))-2))
-        if len(middle) > width+1:
-            # Get the difference
-            di = len(middle) - width
-            # Add the padding for the ...#
-            di += 3
-            # Trim the string
-            middle = middle[:-di] + "...#"
+
+        title = text or self.name
+
+        print("-" * width)
+
+        middle_padding = max(
+            (width - len(title) - 2) // 2,
+            0,
+        )
+
+        middle = (
+            "|"
+            + (" " * middle_padding)
+            + title
+            + (
+                " "
+                * (
+                    width
+                    - middle_padding
+                    - len(title)
+                    - 2
+                )
+            )
+            + "|"
+        )
+
+        if len(middle) > width:
+            middle = middle[: width - 4] + "...|"
+
         print(middle)
-        print("-"*width)
+        print("-" * width)
 
-    def resize(self, width, height):
-        print('\033[8;{};{}t'.format(height, width))
+    @staticmethod
+    def resize(
+        width: int,
+        height: int,
+    ) -> None:
+        """
+        Resize terminal window.
+        """
 
-    def custom_quit(self):
+        print(
+            f"\033[8;{height};{width}t"
+        )
+
+    # ==================================================
+    # EXIT
+    # ==================================================
+
+    def custom_quit(self) -> None:
+        """
+        Display exit message and terminate.
+        """
+
         self.head()
-        print("by Anton Sychev\n")
-        print("https://github.com/klich3/PPT-table-tool\n")
-        print("")
-        print("Thanks for testing it out, for bugs/comments/complaints")
-        print("")
-        print("Created for the community, by the community.")
-        print("Colaborated with Perez987")
-        print("https://github.com/perez987/6600XT-on-macOS-with-PowerPlayTable-on-SSDT-or-config.plist\n")
 
-        # Get the time and wish them a good morning, afternoon, evening, and night
-        hr = datetime.datetime.now().time().hour
-        if hr > 3 and hr < 12:
-            print("Have a nice morning!\n\n")
-        elif hr >= 12 and hr < 17:
-            print("Have a nice afternoon!\n\n")
-        elif hr >= 17 and hr < 21:
-            print("Have a nice evening!\n\n")
+        print("by Anton Sychev\n")
+        print(
+            "https://github.com/klich3/PPT-table-tool\n"
+        )
+
+        print(
+            "Thanks for testing it out.\n"
+        )
+
+        print(
+            "Created for the community, "
+            "by the community.\n"
+        )
+
+        print(
+            "Collaborated with Perez987\n"
+        )
+
+        print(
+            "https://github.com/perez987/"
+            "6600XT-on-macOS-with-"
+            "PowerPlayTable-on-SSDT-or-config.plist\n"
+        )
+
+        current_hour = (
+            datetime.datetime.now()
+            .time()
+            .hour
+        )
+
+        if 4 <= current_hour < 12:
+            message = "Have a nice morning!"
+
+        elif 12 <= current_hour < 17:
+            message = "Have a nice afternoon!"
+
+        elif 17 <= current_hour < 21:
+            message = "Have a nice evening!"
+
         else:
-            print("Have a nice night!\n\n")
-        exit(0)
+            message = "Have a nice night!"
+
+        print(f"{message}\n")
+
+        sys.exit(0)
